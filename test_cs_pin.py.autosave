@@ -1,0 +1,17 @@
+from pyb import Pin, SPI
+import time
+
+m_cs_pin  = Pin("P7", Pin.PULL_UP)
+
+m_cs_pin.value(0)
+time.sleep(1000)
+m_cs_pin.value(1)
+time.sleep(1000)
+m_cs_pin.value(0)
+time.sleep(1000)
+m_cs_pin.value(1)
+time.sleep(1000)
+m_cs_pin.value(0)
+time.sleep(1000)
+m_cs_pin.value(1)
+print('flag')
