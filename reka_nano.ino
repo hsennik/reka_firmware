@@ -1,3 +1,7 @@
+
+
+
+
 // do current measurements
 //total 28-29mA --> OK
 // figure out power scheme
@@ -15,8 +19,12 @@
 //verify beacon read ok
 //beacon automatically connect
 //packet ids
-
+//can't read beacon
+//hex for beacon
+//act if camera not running
 //---------------------------------------------------REKA INIT-------------------------------------------------
+
+#include <Wire.h>
 
 #define  REKA_FW 0x10
 #define  REKA_ID_1 0x100000
@@ -26,6 +34,15 @@ bool collect_camera = 0;
 bool collect_mic = 0;
 bool collect_beacon = 0;
 bool info_message = 0;
+String data_gps = "";
+String data_camera = "";
+String data_mic = "";
+String data_beacon_no = "";
+String data_beacon_id = "";
+uint32_t data_messagetype = "";
+String data_1;
+String data_2;
+String data_3;
 int STM32addr = 0x42;
 
 
@@ -85,11 +102,169 @@ SoftwareSerial mySerial(3, 2);
 
 
 
+bool getUserInput(char buffer[], uint8_t maxSize)
+{
+    // timeout in 100 milliseconds
+    TimeoutTimer timeout(100);
+  
+    memset(buffer, 0, maxSize);
+    while ( (!Serial.available()) && !timeout.expired() ) {
+        delay(1);
+    }
+  
+    if (timeout.expired()) return false;
+  
+    delay(2);
+    uint8_t count = 0;
+    do {
+        count += Serial.readBytes(buffer + count, maxSize);
+        delay(2);
+    } while ( (count < maxSize) && (Serial.available()) );
+  
+    return true;
+}
+
+void sendUserInput(void) {
+    // Check for user input
+    char inputs[BUFSIZE + 1];
+    
+    if ( getUserInput(inputs, BUFSIZE) ) {
+        // Send characters to Bluefruit
+        Serial.print("[Send] ");
+        Serial.println(inputs);
+      
+        reka_control.print("AT+BLEUARTTX=");
+        reka_control.println(inputs);
+      
+      
+        reka_beacon.print("AT+BLEUARTTX=");
+        reka_beacon.println(inputs);
+      
+        // check response stastus
+        if (! reka_control.waitForOK() ) {
+            Serial.println(F("Failed to send1?"));
+        }
+      
+        if (! reka_beacon.waitForOK() ) {
+            Serial.println(F("Failed to send2?"));
+        }
+    }
+    
+    return;
+
+}
+
+void haiToBLE(Adafruit_BluefruitLE_SPI channel) {
+  
+    channel.print("AT+BLEUARTTX=");
+    channel.println("hai");
+  
+    return;
+
+}
+
+String beacon_read(Adafruit_BluefruitLE_SPI channel) {
+
+//    channel.println("AT+BLEUARTFIFO=RX");
+//    channel.readline();
+//    Serial.println(channel.buffer);
+//    if (strcmp(channel.buffer, "0")!=0){
+//      channel.readline();
+//      channel.println("AT+BLEUARTRX");
+//      channel.readline();
+//      if (strcmp(channel.buffer, "OK") != 0) {
+//        //Serial.print(F("[Recv1] "));
+//        //Serial.println(channel.buffer);
+//        channel.waitForOK();
+//        return channel.buffer;
+//      }
+//    }  
+    return ("-1");
+
+}
+
+
+String gps_get(void){
+
+    String gpsdata_line = "";
+    
+    if(mySerial.available()==0){
+        return ("-1");
+    }else{
+        if(gpsdata=='$'){
+            gpsdata_line.concat(gpsdata);
+            gpsdata = mySerial.read();
+      
+            while (gpsdata != '$') {
+                if (gpsdata != -1) {
+                    //gpsdata_line = gpsdata_line + gpsdata;
+                    gpsdata_line.concat(gpsdata);
+                    //Serial.print(gpsdata);
+                }
+                gpsdata = mySerial.read();
+            }
+            return gpsdata_line;
+        }else{
+            while (gpsdata != '$') {
+                if (gpsdata == -1) {
+                    return ("-1");
+                }
+                gpsdata = mySerial.read();
+                Serial.println(gpsdata);
+            }
+            return ("-2");
+        }
+    }
+
+}
+
+
+String gps_fix(String gps) {
+    // check for the right beginning tag 
+    if (gps.substring(1,6) == "GPRMC") {
+        // check for a fix
+        if (gps.substring(18,19) == "A") {
+            //parse the gps data if there is a fix
+            String lat_coords = gps.substring(20,29);
+            String north_south = gps.substring(30,31);
+            String long_coords = gps.substring(32,42);
+            String east_west = gps.substring(43,44);
+          
+            lat_coords.remove(4,1); // remove decimal places
+            long_coords.remove(5,1); // remove decimal places 
+            String lat_degrees = lat_coords.substring(0,2);
+            String lat_decimaldegs = String((lat_coords.substring(2,8) + "00").toInt()/60);
+            String long_degrees = long_coords.substring(0,3);
+            String long_decimaldegs = String((long_coords.substring(3,9) + "00").toInt()/60);
+          
+            String lat_sign = "";
+            if (north_south == "S") {
+                lat_sign = "-";
+            }
+          
+            String long_sign = "";
+            if (east_west == "W") {
+                long_sign = "-";
+            }
+        
+            return (lat_sign + lat_degrees + "." + lat_decimaldegs + "," + long_sign + long_degrees + "." + long_decimaldegs);
+        }else{
+          return ("-1");
+          }
+    }
+      else {
+          return("-2");
+    }
+}
+
+
+
+
 
 void setup() {
     // put your setup code here, to run once:
   
-    while (!Serial);  // required for Flora & Micro
+    //while (!Serial);  // required for Flora & Micro
     delay(500);
   
     Serial.begin(115200);
@@ -158,6 +333,8 @@ void setup() {
     while (! reka_control.isConnected()) {
         delay(500);
     }
+    Serial.println("control connected");
+
   
     info_message = 1;
   
@@ -169,7 +346,7 @@ void setup() {
         reka_control.sendCommandCheckOK("AT+HWModeLED=" MODE_LED_BEHAVIOUR);
         Serial.println(F("******************************"));
     }
-  
+
     if ( reka_beacon.isVersionAtLeast(MINIMUM_FIRMWARE_VERSION)) {
         // Change Mode LED Activity
         Serial.println(F("******************************"));
@@ -177,6 +354,7 @@ void setup() {
         reka_beacon.sendCommandCheckOK("AT+HWModeLED=" MODE_LED_BEHAVIOUR);
         Serial.println(F("******************************"));
     }
+
   
   
   
@@ -203,21 +381,20 @@ void loop() {
     
     data_gps = "";
     data_gps = gps_get();
-    if (data_gps == -1){
-        Serial.print("ERROR[-1]: no GPS data available");
-    }else if (data_gps == -2){
-        Serial.print("ERROR[-2]: incomplete GPS parse, collect next data set");
+    Serial.println(data_gps);
+    if (data_gps == "-1"){
+        Serial.print("ERROR[-1]: no GPS data available \n");
+    }else if (data_gps == "-2"){
+        Serial.print("ERROR[-2]: incomplete GPS parse, collect next data set \n");
     }else{
-        data_gps = gps_fix(data_gps);
-        if(data_gps == -1){
-            Serial.print("ERROR[-3]: no GPS fix");
-        }else if (data_gps == -1){
-            Serial.print("ERROR[-4]: preliminary data");
-        }else{
-            collect_gps = 1;
-        }
+//        data_gps = gps_fix(data_gps);
+//        if(data_gps == "-1"){
+//            //Serial.print("ERROR[-3]: no GPS fix \n");
+//        }else{
+//            collect_gps = 1;
+//        }
+    collect_gps = 1;
     }
-
     //-------------------------------COLLECT CAMERA-----------------------------------
     
     data_camera = "";
@@ -230,6 +407,8 @@ void loop() {
 
     if (data_camera.length() == 15){
       collect_camera = 1;
+    }else{
+      //Serial.println("ERROR[-4]: incorrect camera data length \n");
     }
 
     //-------------------------------COLLECT MIC--------------------------------------
@@ -242,16 +421,36 @@ void loop() {
     data_beacon_id = "";
     data_beacon_no = "";
 
-    if(!reka_beacon.isConnected()) {
-        data_beacon_id = checkdatafromBLE(reka_beacon);
-        if (data_beacon_id==-1){
-            Serial.print("ERROR[-5]: failed to read beacon data");
-        }else{
-            collect_beacon = 1;
-            data_beacon_no = "1";
-        }
+//
+//    if(!reka_beacon.isConnected()) {
+//        data_beacon_id = beacon_read(reka_beacon);
+//        if (data_beacon_id == "-1"){
+//            Serial.print("ERROR[-5]: failed to read beacon data \n");
+//        }else{
+//            collect_beacon = 1;
+//            data_beacon_no = "1";
+//        }
+//    }
+//
+
+    if(reka_beacon.isConnected()){
+      //Serial.println("success");
+      //delay(10000);
+      //data_beacon_id = beacon_read(reka_beacon);
+      //if (data_beacon_id == "-1"){
+      //    Serial.print("ERROR[-5]: failed to read beacon data \n");
+      //}else{
+      //    collect_beacon = 1;
+      //    data_beacon_no = "1";
+      //    Serial.print("beacon sending");
+      //}
+      data_beacon_id = "10000000";
+      data_beacon_no = "10";  
+      collect_beacon = 1;    
+    }else{
+      //Serial.println("no beacon pair");
     }
-    
+      
     //-------------------------------SEND PACKET--------------------------------------
     
     if(info_message == 1){
@@ -264,190 +463,68 @@ void loop() {
     
     
     
-    data = "$!" + String(REKA_FW, HEX) + String(REKA_ID_1, HEX) + String(REKA_ID_2, HEX) + "!" + String(data_messagetype, HEX) + "!";
+    //data_1 = "$!" + String(REKA_FW, HEX) + String(REKA_ID_1, HEX) + String(REKA_ID_2, HEX) + "!" + String(data_messagetype, HEX) + "!";
+
+    
+    data_1.concat("$!");
+    data_1.concat(String(REKA_FW, HEX));
+    data_1.concat(String(REKA_ID_1, HEX));
+    data_1.concat(String(REKA_ID_2, HEX));
+    data_1.concat("!");
+    data_1.concat(String(data_messagetype, HEX));
+    data_1.concat("!");
     
     if(collect_gps == 1){
-       data.concat(data_gps);
-        collect_gps = 0;
+       data_2.concat(data_gps);
+       collect_gps = 0;
     }
-    data.concat("!");
+    data_2.concat("!");
+
     if(collect_camera == 1){
-       data.concat(data_camera);
+       data_3.concat(data_camera);
         collect_camera = 0;
     }
-    data.concat("!");
+    data_3.concat("!");
     if(collect_mic == 1){
-        data.concat(data_mic);
+        data_3.concat(data_mic);
         collect_mic = 0;
     }
-    data.concat("!");
+    data_3.concat("!");
     if(collect_beacon == 1){
-       data.concat(data_beacon_no);
-        data.concat("!");
-        data.concat(data_beacon_id);
-        collect_beacon = 0;
+       data_3.concat(data_beacon_no);
+       data_3.concat("!");
+       data_3.concat(data_beacon_id);
+       collect_beacon = 0;
     }else{
-        data.concat("!");
+        data_3.concat("!");
     }
+    data_3.concat("#");
 
+
+    Serial.println(data_1);
+    Serial.println(data_2);
+    Serial.println(data_3);
+
+
+
+    
     reka_control.print("AT+BLEUARTTX=");
-    reka_control.println(data);
-    Serial.println(data);
-    data = "";
-        
-    checkDataFromBLE(reka_control);
-    checkDataFromBLE(reka_beacon);
+    reka_control.println(data_1);
+    delay(500);
+    reka_control.print("AT+BLEUARTTX=");
+    reka_control.println(data_2);
+    delay(500);
+    reka_control.print("AT+BLEUARTTX=");
+    reka_control.println(data_3);
 
-    delay(1000);
-
-}
-
-
-bool getUserInput(char buffer[], uint8_t maxSize)
-{
-    // timeout in 100 milliseconds
-    TimeoutTimer timeout(100);
-  
-    memset(buffer, 0, maxSize);
-    while ( (!Serial.available()) && !timeout.expired() ) {
-        delay(1);
-    }
-  
-    if (timeout.expired()) return false;
-  
-    delay(2);
-    uint8_t count = 0;
-    do {
-        count += Serial.readBytes(buffer + count, maxSize);
-        delay(2);
-    } while ( (count < maxSize) && (Serial.available()) );
-  
-    return true;
-}
-
-void sendUserInput(void) {
-    // Check for user input
-    char inputs[BUFSIZE + 1];
     
-    if ( getUserInput(inputs, BUFSIZE) ) {
-        // Send characters to Bluefruit
-        Serial.print("[Send] ");
-        Serial.println(inputs);
-      
-        reka_control.print("AT+BLEUARTTX=");
-        reka_control.println(inputs);
-      
-      
-        reka_beacon.print("AT+BLEUARTTX=");
-        reka_beacon.println(inputs);
-      
-        // check response stastus
-        if (! reka_control.waitForOK() ) {
-            Serial.println(F("Failed to send1?"));
-        }
-      
-        if (! reka_beacon.waitForOK() ) {
-            Serial.println(F("Failed to send2?"));
-        }
-    }
-    
-    return;
+    data_1 = "";
+    data_2 = "";
+    data_3 = "";
 
-}
-
-void haiToBLE(Adafruit_BluefruitLE_SPI channel) {
-  
-    channel.print("AT+BLEUARTTX=");
-    channel.println("hai");
-  
-    return;
-
-}
-
-String beacon_read(Adafruit_BluefruitLE_SPI channel) {
-
-    channel.println("AT+BLEUARTRX");
-    channel.readline();
-    if (strcmp(channel.buffer, "OK") != 0) {
-      //Serial.print(F("[Recv1] "));
-      //Serial.println(channel.buffer);
-      channel.waitForOK();
-      return channel.buffer;
-    }
-  
-    return -1;
+    delay(6000);
 
 }
 
 
-String gps_get(void){
 
-    String gpsdata_line = "";
-    
-    if(mySerial.available()==0){
-        return -1;
-    }else{
-        if(gpsdata=='$'){
-            gpsdata_line.concat(gpsdata);
-            gpsdata = mySerial.read();
-      
-            while (gpsdata != '$') {
-                if (gpsdata != -1) {
-                    //gpsdata_line = gpsdata_line + gpsdata;
-                    gpsdata_line.concat(gpsdata);
-                    //Serial.print(gpsdata);
-                }
-                gpsdata = mySerial.read();
-            }
-            return gpsdata_line;
-        }else{
-            while (gpsdata != '$') {
-                if (gpsdata == -1) {
-                    return -1;
-                }
-                gpsdata = mySerial.read();
-            }
-            return -2;
-        }
-    }
-
-}
-
-
-String gps_fix(String gps) {
-    // check for the right beginning tag 
-    if (gps.substring(1,6) == "GPRMC") {
-        // check for a fix
-        if (gps.substring(18,19) == "A") {
-            //parse the gps data if there is a fix
-            String lat_coords = gps.substring(20,29);
-            String north_south = gps.substring(30,31);
-            String long_coords = gps.substring(32,42);
-            String east_west = gps.substring(43,44);
-          
-            lat_coords.remove(4,1); // remove decimal places
-            long_coords.remove(5,1); // remove decimal places 
-            String lat_degrees = lat_coords.substring(0,2);
-            String lat_decimaldegs = String((lat_coords.substring(2,8) + "00").toInt()/60);
-            String long_degrees = long_coords.substring(0,3);
-            String long_decimaldegs = String((long_coords.substring(3,9) + "00").toInt()/60);
-          
-            String lat_sign = "";
-            if (north_south == "S") {
-                lat_sign = "-";
-            }
-          
-            String long_sign = "";
-            if (east_west == "W") {
-                long_sign = "-";
-            }
-        
-            return (lat_sign + lat_degrees + "." + lat_decimaldegs + "," + long_sign + long_degrees + "." + long_decimaldegs);
-        }else{
-          return ("-1");
-          }
-    }
-      else {
-          return("-2");
-    }
-}
