@@ -1,19 +1,35 @@
 // do current measurements
-  //total 28-29mA --> OK
+//total 28-29mA --> OK
 // figure out power scheme
-  //arduino nano 5V logic, so from 5V rail
+//arduino nano 5V logic, so from 5V rail
 // migrate over bluetooth x 2
-  //make fcns
+//make fcns
 // migrate over uart
-  //make fcns
+//make fcns
+
+
 // integrate camera i2c
-  //make fcns
+//make fcns
+
+//TO DO:
+//verify beacon read ok
+//beacon automatically connect
+//packet ids
+
+//---------------------------------------------------REKA INIT-------------------------------------------------
+
+#define  REKA_FW 0x10
+#define  REKA_ID_1 0x100000
+#define  REKA_ID_2 0x100000
+bool collect_gps = 0;
+bool collect_camera = 0;
+bool collect_mic = 0;
+bool collect_beacon = 0;
+bool info_message = 0;
+int STM32addr = 0x42;
 
 
-
-
-
-//-------------BLUETOOTH INIT---------------
+//-----2^8-------------------------------------------BLUETOOTH INIT--------------------------------------------
 
 #include <Arduino.h>
 #include <SPI.h>
@@ -24,7 +40,7 @@
 #include "BluefruitConfig.h"
 
 #if SOFTWARE_SERIAL_AVAILABLE
-  #include <SoftwareSerial.h>
+#include <SoftwareSerial.h>
 #endif
 
 #define FACTORYRESET_ENABLE         1
@@ -42,13 +58,12 @@ void error(const __FlashStringHelper*err) {
 }
 
 
-//--------------GPS INIT-------------------a
+//----------------------------------------------------GPS INIT---------------------------------------------------
 
 #include <Adafruit_GPS.h>
 #include <SoftwareSerial.h>
 #include "BluefruitConfig.h"
 char gpsdata = "";
-String gpsdata_line="";
 
 SoftwareSerial mySerial(3, 2);
 
@@ -72,269 +87,367 @@ SoftwareSerial mySerial(3, 2);
 
 
 void setup() {
-  // put your setup code here, to run once:
+    // put your setup code here, to run once:
+  
+    while (!Serial);  // required for Flora & Micro
+    delay(500);
+  
+    Serial.begin(115200);
 
-  while (!Serial);  // required for Flora & Micro
-  delay(500);
-
-  Serial.begin(115200);
-
-
-//-------------BLUETOOTH SETUP---------------
-
-
-  Serial.println(F("Adafruit Bluefruit Command Mode Example"));
-  Serial.println(F("---------------------------------------"));
-
-  /* Initialise the module */
-  Serial.print(F("Initialising the Bluefruit LE module: "));
-
-  if ( !reka_control.begin(VERBOSE_MODE) )
-  {
-    error(F("Couldn't find Bluefruit1, make sure it's in CoMmanD mode & check wiring?"));
-  }
-  Serial.println( F("OK1!") );
-
-  if ( !reka_beacon.begin(VERBOSE_MODE) )
-  {
-    error(F("Couldn't find Bluefruit2, make sure it's in CoMmanD mode & check wiring?"));
-  }
-  Serial.println( F("OK2!") );
-
-  if ( FACTORYRESET_ENABLE )
-  {
-    /* Perform a factory reset to make sure everything is in a known state */
-    Serial.println(F("Performing a factory reset: "));
-    if ( ! reka_control.factoryReset() ){
-      error(F("Couldn't factory reset1"));
+    Wire.begin();        // join i2c bus (address optional for master)  
+  
+    //--------------------------------------------------BLUETOOTH SETUP---------------------------------------------------
+  
+  
+    Serial.println(F("Reka HW"));
+    Serial.println(F("---------------------------------------"));
+  
+    /* Initialise the module */
+    Serial.print(F("Initialising the Reka Control and Beacon: "));
+  
+    if ( !reka_control.begin(VERBOSE_MODE) ){
+        error(F("Couldn't find Reka Control, make sure it's in CoMmanD mode & check wiring?"));
     }
-    if ( ! reka_beacon.factoryReset() ){
-      error(F("Couldn't factory reset2"));
+    Serial.println( F("control_OK!") );
+  
+    if ( !reka_beacon.begin(VERBOSE_MODE) ){
+        error(F("Couldn't find Reka Beacon, make sure it's in CoMmanD mode & check wiring?"));
     }
-  }
-
-
-  reka_control.println("AT+GAPDEVNAME=reka_control");
-  reka_control.println("ATZ");
-  reka_beacon.println("AT+GAPDEVNAME=reka_beacon");
-  reka_beacon.println("ATZ");
-
-  /* Disable command echo from Bluefruit */
-  reka_control.echo(false);
-  reka_beacon.echo(false);
-
-  Serial.println("Requesting Bluefruit info:");
-  /* Print Bluefruit information */
-  reka_control.info();
-  reka_beacon.info();
-
-  Serial.println(F("Please use Adafruit Bluefruit LE app to connect in UART mode"));
-  Serial.println(F("Then Enter characters to send to Bluefruit"));
-  Serial.println();
-
-  reka_control.verbose(false);  // debug info is a little annoying after this point!
-  reka_beacon.verbose(false);  // debug info is a little annoying after this point!
-
-
-  /* Wait for connection */
-  while (! reka_control.isConnected() || ! reka_beacon.isConnected()) {
-      delay(500);
-  }
-
-
-  // LED Activity command is only supported from 0.6.6
-  if ( reka_control.isVersionAtLeast(MINIMUM_FIRMWARE_VERSION) )
-  {
-    // Change Mode LED Activity
-    Serial.println(F("******************************"));
-    Serial.println(F("Change LED1 activity to " MODE_LED_BEHAVIOUR));
-    reka_control.sendCommandCheckOK("AT+HWModeLED=" MODE_LED_BEHAVIOUR);
-    Serial.println(F("******************************"));
-  }
-
-  if ( reka_beacon.isVersionAtLeast(MINIMUM_FIRMWARE_VERSION) )
-  {
-    // Change Mode LED Activity
-    Serial.println(F("******************************"));
-    Serial.println(F("Change LED2 activity to " MODE_LED_BEHAVIOUR));
-    reka_beacon.sendCommandCheckOK("AT+HWModeLED=" MODE_LED_BEHAVIOUR);
-    Serial.println(F("******************************"));
-  }
-
-
-
-//-------------GPS SETUP---------------
-
-  mySerial.begin(9600);
-  delay(2000);
-  Serial.println("Get version!");
-  mySerial.println(PMTK_Q_RELEASE);
+    Serial.println( F("beacon_OK!") );
   
-  // you can send various commands to get it started
-  mySerial.println(PMTK_SET_NMEA_OUTPUT_RMCONLY);
-//  mySerial.println(PMTK_SET_NMEA_OUTPUT_ALLDATA);
-
-  mySerial.println(PMTK_SET_NMEA_UPDATE_1HZ);
-
-
-
+    if ( FACTORYRESET_ENABLE ) {
+        /* Perform a factory reset to make sure everything is in a known state */
+        Serial.println(F("Performing a factory reset: "));
+        if ( ! reka_control.factoryReset() ) {
+          error(F("Couldn't factory reset control"));
+        }
+        if ( ! reka_beacon.factoryReset() ) {
+          error(F("Couldn't factory reset beacon"));
+      }
+    }
   
-
-
   
+    reka_control.println("AT+GAPDEVNAME=reka_control");
+    reka_control.println("ATZ");
+    reka_beacon.println("AT+GAPDEVNAME=reka_beacon");
+    reka_beacon.println("ATZ");
+  
+    /* Disable command echo from Bluefruit */
+    reka_control.echo(false);
+    reka_beacon.echo(false);
+  
+    Serial.println("Requesting Reka info:");
+    /* Print Bluefruit information */
+    reka_control.info();
+    reka_beacon.info();
+  
+    Serial.println(F("Please use Reka app to connect to control"));
+    Serial.println();
+  
+    reka_control.verbose(false);  // debug info is a little annoying after this point!
+    reka_beacon.verbose(false);  // debug info is a little annoying after this point!
+  
+  
+    //    /* Wait for connection */
+    //    while (! reka_control.isConnected() || ! reka_beacon.isConnected()) {
+    //        delay(500);
+    //    }
+  
+  
+    /* Wait for connection */
+    while (! reka_control.isConnected()) {
+        delay(500);
+    }
+  
+    info_message = 1;
+  
+    // LED Activity command is only supported from 0.6.6
+    if ( reka_control.isVersionAtLeast(MINIMUM_FIRMWARE_VERSION)) {
+        // Change Mode LED Activity
+        Serial.println(F("******************************"));
+        Serial.println(F("Change LED1 activity to " MODE_LED_BEHAVIOUR));
+        reka_control.sendCommandCheckOK("AT+HWModeLED=" MODE_LED_BEHAVIOUR);
+        Serial.println(F("******************************"));
+    }
+  
+    if ( reka_beacon.isVersionAtLeast(MINIMUM_FIRMWARE_VERSION)) {
+        // Change Mode LED Activity
+        Serial.println(F("******************************"));
+        Serial.println(F("Change LED2 activity to " MODE_LED_BEHAVIOUR));
+        reka_beacon.sendCommandCheckOK("AT+HWModeLED=" MODE_LED_BEHAVIOUR);
+        Serial.println(F("******************************"));
+    }
+  
+  
+  
+    //---------------------------------------------------GPS SETUP-----------------------------------------------
+  
+    mySerial.begin(9600);
+    delay(2000);
+    Serial.println("Get GPS version!");
+    mySerial.println(PMTK_Q_RELEASE);
+  
+    // you can send various commands to get it started
+    mySerial.println(PMTK_SET_NMEA_OUTPUT_RMCONLY);
+    //  mySerial.println(PMTK_SET_NMEA_OUTPUT_ALLDATA);
+  
+    mySerial.println(PMTK_SET_NMEA_UPDATE_1HZ);
 
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-
-
-
-
-
-
-//-------------BLUETOOTH LOOP---------------
-
-sendUserInput();
-sendGPSDataToControl();
-
-
-
-
-
-
   
-
-//haiToBLE(reka_control);
-//haiToBLE(reka_beacon);
-
-
-delay(1000); 
-
-checkDataFromBLE(reka_control);
-checkDataFromBLE(reka_beacon);
   
+    //--------------------------------COLLECT GPS-------------------------------------
+    
+    data_gps = "";
+    data_gps = gps_get();
+    if (data_gps == -1){
+        Serial.print("ERROR[-1]: no GPS data available");
+    }else if (data_gps == -2){
+        Serial.print("ERROR[-2]: incomplete GPS parse, collect next data set");
+    }else{
+        data_gps = gps_fix(data_gps);
+        if(data_gps == -1){
+            Serial.print("ERROR[-3]: no GPS fix");
+        }else if (data_gps == -1){
+            Serial.print("ERROR[-4]: preliminary data");
+        }else{
+            collect_gps = 1;
+        }
+    }
+
+    //-------------------------------COLLECT CAMERA-----------------------------------
+    
+    data_camera = "";
+
+    Wire.requestFrom(STM32addr, 15);
+    while (Wire.available()) { // slave may send less than requested
+       char c = Wire.read(); // receive a byte as character
+       data_camera.concat(c);    
+    }
+
+    if (data_camera.length() == 15){
+      collect_camera = 1;
+    }
+
+    //-------------------------------COLLECT MIC--------------------------------------
+    
+    data_mic = "";
+    //collect_mic = 1;
+    
+    //-------------------------------COLLECT BEACONS----------------------------------
+    
+    data_beacon_id = "";
+    data_beacon_no = "";
+
+    if(!reka_beacon.isConnected()) {
+        data_beacon_id = checkdatafromBLE(reka_beacon);
+        if (data_beacon_id==-1){
+            Serial.print("ERROR[-5]: failed to read beacon data");
+        }else{
+            collect_beacon = 1;
+            data_beacon_no = "1";
+        }
+    }
+    
+    //-------------------------------SEND PACKET--------------------------------------
+    
+    if(info_message == 1){
+        data_messagetype = 0x10;      //info message
+        info_message = 0;
+    }else{
+        data_messagetype = 0x20;      //data message
+    }
+    
+    
+    
+    
+    data = "$!" + String(REKA_FW, HEX) + String(REKA_ID_1, HEX) + String(REKA_ID_2, HEX) + "!" + String(data_messagetype, HEX) + "!";
+    
+    if(collect_gps == 1){
+       data.concat(data_gps);
+        collect_gps = 0;
+    }
+    data.concat("!");
+    if(collect_camera == 1){
+       data.concat(data_camera);
+        collect_camera = 0;
+    }
+    data.concat("!");
+    if(collect_mic == 1){
+        data.concat(data_mic);
+        collect_mic = 0;
+    }
+    data.concat("!");
+    if(collect_beacon == 1){
+       data.concat(data_beacon_no);
+        data.concat("!");
+        data.concat(data_beacon_id);
+        collect_beacon = 0;
+    }else{
+        data.concat("!");
+    }
+
+    reka_control.print("AT+BLEUARTTX=");
+    reka_control.println(data);
+    Serial.println(data);
+    data = "";
+        
+    checkDataFromBLE(reka_control);
+    checkDataFromBLE(reka_beacon);
+
+    delay(1000);
 
 }
 
 
 bool getUserInput(char buffer[], uint8_t maxSize)
 {
-  // timeout in 100 milliseconds
-  TimeoutTimer timeout(100);
-
-  memset(buffer, 0, maxSize);
-  while( (!Serial.available()) && !timeout.expired() ) { delay(1); }
-
-  if ( timeout.expired() ) return false;
-
-  delay(2);
-  uint8_t count=0;
-  do
-  {
-    count += Serial.readBytes(buffer+count, maxSize);
+    // timeout in 100 milliseconds
+    TimeoutTimer timeout(100);
+  
+    memset(buffer, 0, maxSize);
+    while ( (!Serial.available()) && !timeout.expired() ) {
+        delay(1);
+    }
+  
+    if (timeout.expired()) return false;
+  
     delay(2);
-  } while( (count < maxSize) && (Serial.available()) );
-
-  return true;
+    uint8_t count = 0;
+    do {
+        count += Serial.readBytes(buffer + count, maxSize);
+        delay(2);
+    } while ( (count < maxSize) && (Serial.available()) );
+  
+    return true;
 }
 
-
-
-//-------------BLUETOOTH FCNS---------------
-
-void sendUserInput(void){
-  // Check for user input
-  char inputs[BUFSIZE+1];
-
-  if ( getUserInput(inputs, BUFSIZE) )
-  {
-    // Send characters to Bluefruit
-    Serial.print("[Send] ");
-    Serial.println(inputs);
-
-    reka_control.print("AT+BLEUARTTX=");
-    reka_control.println(inputs);
-
+void sendUserInput(void) {
+    // Check for user input
+    char inputs[BUFSIZE + 1];
     
-    reka_beacon.print("AT+BLEUARTTX=");
-    reka_beacon.println(inputs);
-
-    // check response stastus
-    if (! reka_control.waitForOK() ) {
-      Serial.println(F("Failed to send1?"));
-    }
-
-    if (! reka_beacon.waitForOK() ) {
-      Serial.println(F("Failed to send2?"));
-    }
-  }
-
-  return;
-
-}
-
-void haiToBLE(Adafruit_BluefruitLE_SPI channel){
-
-  channel.print("AT+BLEUARTTX=");
-  channel.println("hai");
-
-  return;
-
-}
-
-void checkDataFromBLE(Adafruit_BluefruitLE_SPI channel){
-
-  channel.println("AT+BLEUARTRX");
-  channel.readline();
-  if (strcmp(channel.buffer, "OK") != 0){
-      Serial.print(F("[Recv1] ")); 
-      Serial.println(channel.buffer);
-      channel.waitForOK();
-  }
-
-  return;
-
-}  
-
-
-
-
-void sendGPSDataToControl(){
-
-    if(mySerial.available() != 0){
+    if ( getUserInput(inputs, BUFSIZE) ) {
+        // Send characters to Bluefruit
+        Serial.print("[Send] ");
+        Serial.println(inputs);
       
-      gpsdata_line = gpsdata_line + gpsdata;
-      Serial.print(gpsdata);
+        reka_control.print("AT+BLEUARTTX=");
+        reka_control.println(inputs);
+      
+      
+        reka_beacon.print("AT+BLEUARTTX=");
+        reka_beacon.println(inputs);
+      
+        // check response stastus
+        if (! reka_control.waitForOK() ) {
+            Serial.println(F("Failed to send1?"));
+        }
+      
+        if (! reka_beacon.waitForOK() ) {
+            Serial.println(F("Failed to send2?"));
+        }
+    }
+    
+    return;
 
-      gpsdata = mySerial.read();
-      if(gpsdata == '$'){
-        //gpsdata_line = gpsdata_line + gpsdata;
-        gpsdata_line.concat(gpsdata);
-        Serial.print(gpsdata);
-        gpsdata = mySerial.read();
-      }else if (gpsdata == -1){
-        gpsdata = mySerial.read();
-      }else{
-          while(gpsdata!='$'){
-            if(gpsdata!= -1){
-              //gpsdata_line = gpsdata_line + gpsdata;
-              gpsdata_line.concat(gpsdata);
-              Serial.print(gpsdata);
-            }
+}
+
+void haiToBLE(Adafruit_BluefruitLE_SPI channel) {
+  
+    channel.print("AT+BLEUARTTX=");
+    channel.println("hai");
+  
+    return;
+
+}
+
+String beacon_read(Adafruit_BluefruitLE_SPI channel) {
+
+    channel.println("AT+BLEUARTRX");
+    channel.readline();
+    if (strcmp(channel.buffer, "OK") != 0) {
+      //Serial.print(F("[Recv1] "));
+      //Serial.println(channel.buffer);
+      channel.waitForOK();
+      return channel.buffer;
+    }
+  
+    return -1;
+
+}
+
+
+String gps_get(void){
+
+    String gpsdata_line = "";
+    
+    if(mySerial.available()==0){
+        return -1;
+    }else{
+        if(gpsdata=='$'){
+            gpsdata_line.concat(gpsdata);
             gpsdata = mySerial.read();
+      
+            while (gpsdata != '$') {
+                if (gpsdata != -1) {
+                    //gpsdata_line = gpsdata_line + gpsdata;
+                    gpsdata_line.concat(gpsdata);
+                    //Serial.print(gpsdata);
+                }
+                gpsdata = mySerial.read();
+            }
+            return gpsdata_line;
+        }else{
+            while (gpsdata != '$') {
+                if (gpsdata == -1) {
+                    return -1;
+                }
+                gpsdata = mySerial.read();
+            }
+            return -2;
+        }
+    }
+
+}
+
+
+String gps_fix(String gps) {
+    // check for the right beginning tag 
+    if (gps.substring(1,6) == "GPRMC") {
+        // check for a fix
+        if (gps.substring(18,19) == "A") {
+            //parse the gps data if there is a fix
+            String lat_coords = gps.substring(20,29);
+            String north_south = gps.substring(30,31);
+            String long_coords = gps.substring(32,42);
+            String east_west = gps.substring(43,44);
+          
+            lat_coords.remove(4,1); // remove decimal places
+            long_coords.remove(5,1); // remove decimal places 
+            String lat_degrees = lat_coords.substring(0,2);
+            String lat_decimaldegs = String((lat_coords.substring(2,8) + "00").toInt()/60);
+            String long_degrees = long_coords.substring(0,3);
+            String long_decimaldegs = String((long_coords.substring(3,9) + "00").toInt()/60);
+          
+            String lat_sign = "";
+            if (north_south == "S") {
+                lat_sign = "-";
+            }
+          
+            String long_sign = "";
+            if (east_west == "W") {
+                long_sign = "-";
+            }
+        
+            return (lat_sign + lat_degrees + "." + lat_decimaldegs + "," + long_sign + long_degrees + "." + long_decimaldegs);
+        }else{
+          return ("-1");
           }
-      }
-
-      if(gpsdata_line != ""){
-          //Serial.println(gpsdata_line);
-          reka_control.print("AT+BLEUARTTX=");
-          reka_control.println(gpsdata_line);
-          gpsdata_line = "";
-      }
-
-  }
-
-  return;
-
+    }
+      else {
+          return("-2");
+    }
 }
