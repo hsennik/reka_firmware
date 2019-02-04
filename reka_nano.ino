@@ -1,7 +1,3 @@
-
-
-
-
 // do current measurements
 //total 28-29mA --> OK
 // figure out power scheme
@@ -22,6 +18,16 @@
 //can't read beacon
 //hex for beacon
 //act if camera not running
+
+//TO DO (Hannah):
+//not using gps data when not enough characters - less than 65 characters (DONE)
+//make sure newline not getting passed through your fcn - remove last two characters of GPS data being sent (DONE)
+//testing gps_fix after getting fix from GPS (does this mean just getting an actual gps fix and testing the code?)
+//change from + to .concat (DONE)
+//need to test functionality of all the above fixes 
+//
+//script may freeze if camera not sending data (nice to have)
+
 //---------------------------------------------------REKA INIT-------------------------------------------------
 
 #include <Wire.h>
@@ -220,45 +226,59 @@ String gps_get(void){
 
 
 String gps_fix(String gps) {
-    // check for the right beginning tag 
-    if (gps.substring(1,6) == "GPRMC") {
-        // check for a fix
-        if (gps.substring(18,19) == "A") {
-            //parse the gps data if there is a fix
-            String lat_coords = gps.substring(20,29);
-            String north_south = gps.substring(30,31);
-            String long_coords = gps.substring(32,42);
-            String east_west = gps.substring(43,44);
-          
-            lat_coords.remove(4,1); // remove decimal places
-            long_coords.remove(5,1); // remove decimal places 
-            String lat_degrees = lat_coords.substring(0,2);
-            String lat_decimaldegs = String((lat_coords.substring(2,8) + "00").toInt()/60);
-            String long_degrees = long_coords.substring(0,3);
-            String long_decimaldegs = String((long_coords.substring(3,9) + "00").toInt()/60);
-          
-            String lat_sign = "";
-            if (north_south == "S") {
-                lat_sign = "-";
-            }
-          
-            String long_sign = "";
-            if (east_west == "W") {
-                long_sign = "-";
-            }
+  if (gps.substring(18,19) == "A") {
+  //check for gps fix 
+    if (gps.length() > 65) {
+    // parse the gps data if the string length seems acceptable 
         
-            return (lat_sign + lat_degrees + "." + lat_decimaldegs + "," + long_sign + long_degrees + "." + long_decimaldegs);
-        }else{
-          return ("-1");
-          }
-    }
-      else {
-          return("-2");
-    }
+      String lat_coords = gps.substring(20,29);
+      String north_south = gps.substring(30,31);
+      String long_coords = gps.substring(32,42);
+      String east_west = gps.substring(43,44);
+      
+      lat_coords.remove(4,1); // remove decimal places
+      long_coords.remove(5,1); // remove decimal places 
+      String lat_degrees = lat_coords.substring(0,2);
+      String lat_decimaldegs = String((lat_coords.substring(2,8) + "00").toInt()/60);
+      String long_degrees = long_coords.substring(0,3);
+      String long_decimaldegs = String((long_coords.substring(3,9) + "00").toInt()/60);
+      
+      String lat_sign = "";
+      if (north_south == "S") {
+          lat_sign = "-";
+      }
+      
+      String long_sign = "";
+      if (east_west == "W") {
+          long_sign = "-";
+      }
+
+      lat_sign.concat(lat_degrees);
+      lat_sign.concat(".");
+      lat_sign.concat(lat_decimaldegs);
+      lat_sign.concat(",");
+      lat_sign.concat(long_sign);
+      lat_sign.concat(long_degrees);
+      lat_sign.concat(".");
+      lat_sign.concat(long_decimaldegs);
+
+      String send_gps = lat_sign;
+
+      int send_gps_length = send_gps.length();
+      // remove the new line character at the end of gps_data (assume "\n" is two characters)
+      send_gps.remove(send_gps_length-2,2);
+  
+      return (send_gps);
+    } else{
+      // error code for string not being the right length 
+      return ("-2");
+      }
+  }
+  else {
+      // error code for no fix 
+      return("-1");
+  }
 }
-
-
-
 
 
 void setup() {
@@ -387,13 +407,15 @@ void loop() {
     }else if (data_gps == "-2"){
         Serial.print("ERROR[-2]: incomplete GPS parse, collect next data set \n");
     }else{
-//        data_gps = gps_fix(data_gps);
-//        if(data_gps == "-1"){
-//            //Serial.print("ERROR[-3]: no GPS fix \n");
-//        }else{
-//            collect_gps = 1;
-//        }
-    collect_gps = 1;
+        //Serial.print(data_gps);
+        data_gps = gps_fix(data_gps);
+        if(data_gps == "-1"){
+            Serial.print("ERROR[-3]: no GPS fix \n");
+        }else if(data_gps == "-2") {
+            Serial.print("ERROR[-4]: data invalid, cannot be parsed \n");
+        }else {
+            collect_gps = 1;
+        }
     }
     //-------------------------------COLLECT CAMERA-----------------------------------
     
@@ -525,6 +547,3 @@ void loop() {
     delay(6000);
 
 }
-
-
-
