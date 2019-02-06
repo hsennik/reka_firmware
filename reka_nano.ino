@@ -35,21 +35,9 @@
 #define  REKA_FW 0x10
 #define  REKA_ID_1 0x100000
 #define  REKA_ID_2 0x100000
-bool collect_gps = 0;
-bool collect_camera = 0;
-bool collect_mic = 0;
-bool collect_beacon = 0;
-bool info_message = 0;
-String data_gps = "";
-String data_camera = "";
-String data_mic = "";
-String data_beacon_no = "";
-String data_beacon_id = "";
-uint32_t data_messagetype = "";
-String data_1;
-String data_2;
-String data_3;
-int STM32addr = 0x42;
+
+//bool info_message = 0;
+
 
 
 //-----2^8-------------------------------------------BLUETOOTH INIT--------------------------------------------
@@ -282,6 +270,9 @@ String gps_fix(String gps) {
 
 
 void setup() {
+
+
+   
     // put your setup code here, to run once:
   
     //while (!Serial);  // required for Flora & Micro
@@ -356,7 +347,7 @@ void setup() {
     Serial.println("control connected");
 
   
-    info_message = 1;
+    //info_message = 1;
   
     // LED Activity command is only supported from 0.6.6
     if ( reka_control.isVersionAtLeast(MINIMUM_FIRMWARE_VERSION)) {
@@ -391,31 +382,67 @@ void setup() {
   
     mySerial.println(PMTK_SET_NMEA_UPDATE_1HZ);
 
+
+
+
+
+
+    //-----------------------------------------------NON GLOBAL VAR-----------------------------------------------
+
+
 }
 
 void loop() {
+
+
+
+
+    String data_gps = "";
+    String data_camera = "";
+    String data_mic = "";
+    String data_beacon_no = "";
+    String data_beacon_id = "";
+    uint32_t data_messagetype = "";
+    String data_1;
+    String data_2;
+    String data_3;
+    int STM32addr = 0x42;
+
+
+
+
+  
   // put your main code here, to run repeatedly:
+
+    bool collect_gps = 0;
+    bool collect_camera = 0;
+    bool collect_mic = 0;
+    bool collect_beacon = 0;
   
   
     //--------------------------------COLLECT GPS-------------------------------------
     
     data_gps = "";
     data_gps = gps_get();
-    Serial.println(data_gps);
+    //Serial.println(data_gps);
     if (data_gps == "-1"){
         Serial.print("ERROR[-1]: no GPS data available \n");
     }else if (data_gps == "-2"){
         Serial.print("ERROR[-2]: incomplete GPS parse, collect next data set \n");
     }else{
         //Serial.print(data_gps);
-        data_gps = gps_fix(data_gps);
-        if(data_gps == "-1"){
-            Serial.print("ERROR[-3]: no GPS fix \n");
-        }else if(data_gps == "-2") {
-            Serial.print("ERROR[-4]: data invalid, cannot be parsed \n");
-        }else {
+        //data_gps = gps_fix(data_gps);
+        //if(data_gps == "-1"){
+        //    Serial.print("ERROR[-3]: no GPS fix \n");
+        //}else if(data_gps == "-2") {
+        //    Serial.print("ERROR[-4]: data invalid, cannot be parsed \n");
+        //}else {
+        if(data_gps.length()>=40){
             collect_gps = 1;
+        }else{
+            collect_gps = 0;
         }
+        //}
     }
     //-------------------------------COLLECT CAMERA-----------------------------------
     
@@ -475,12 +502,12 @@ void loop() {
       
     //-------------------------------SEND PACKET--------------------------------------
     
-    if(info_message == 1){
-        data_messagetype = 0x10;      //info message
-        info_message = 0;
-    }else{
+    //if(info_message == 1){
+    //    data_messagetype = 0x10;      //info message
+    //    info_message = 0;
+    //}else{
         data_messagetype = 0x20;      //data message
-    }
+    //}
     
     
     
@@ -544,6 +571,6 @@ void loop() {
     data_2 = "";
     data_3 = "";
 
-    delay(6000);
+    //delay(6000);
 
 }
