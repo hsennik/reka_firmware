@@ -512,7 +512,7 @@ void loop() {
     
     
     
-    //data_1 = "$!" + String(REKA_FW, HEX) + String(REKA_ID_1, HEX) + String(REKA_ID_2, HEX) + "!" + String(data_messagetype, HEX) + "!";
+    //data_1 = "@!" + String(REKA_FW, HEX) + String(REKA_ID_1, HEX) + String(REKA_ID_2, HEX) + "!" + String(data_messagetype, HEX) + "!";
 
     
     data_1.concat("$!");
