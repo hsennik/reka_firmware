@@ -1,4 +1,3 @@
-
 //---------------------------------------------------REKA INIT-------------------------------------------------
 
 #include <Wire.h>
@@ -151,7 +150,9 @@ void loop() {
 //    }
 
     //--------------------------------COLLECT ALL DATA-------------------------------------
-   
+
+    String test = "";
+    String beacon_name = "";
     char c = GPS.read();
     
     // if a sentence is received, we can check the checksum, parse it...
@@ -163,7 +164,7 @@ void loop() {
     // if millis() or timer wraps around, we'll just reset it
     if (timer > millis())  timer = millis();
 
-    // approximately every 5 seconds or so, print out the current stats
+    // approximately every 7 seconds or so, print out the current stats
     if (millis() - timer > 7000) { 
       timer = millis(); // reset the timer 
 
@@ -180,14 +181,22 @@ void loop() {
       if (GPS.fix) {
         // try this for sending out right number of characters 
         data_2.concat(GPS.latitude); // need to figure out how to send 6 decimal places? check this with Laura
-        Serial.println(GPS.latitude,6); // print latitude with 6 decimal places 
+        Serial.print("Latitude: ");
+        Serial.print(GPS.latitude,6); // print latitude with 6 decimal places 
         data_2.concat(',');
         data_2.concat(GPS.lat);
+        Serial.print(" ");
+        Serial.print(GPS.lat);
+        Serial.print("\n");
         data_2.concat(',');
         data_2.concat(GPS.longitude);
-        Serial.println(GPS.longitude,6);
+        Serial.print("Longitude: ");
+        Serial.print(GPS.longitude,6);
         data_2.concat(',');
+        Serial.print(" ");
         data_2.concat(GPS.lon);
+        Serial.print(GPS.lon);
+        Serial.print("\n");
         data_2.concat("!");
         }
       else {
@@ -209,24 +218,41 @@ void loop() {
       data_3.concat("!");
 
       // COLLECT BEACON
-      if(reka_beacon.isConnected()){
-        data_beacon_id = "55";
-        collect_beacon = 1;
-//        reka_beacon.println("AT+BLEGETADDR");
-//        Serial.println("Beacon sending");
+      if (collect_beacon == 0) {
+        Serial.println("No beacon connected");
+        if(reka_beacon.isConnected()){
+          reka_beacon.println("AT+BLEUARTRX");
+          reka_beacon.readline();
+          test = reka_beacon.buffer;
+//          Serial.println(test);
+          if(test.equals("bedroom")==1){
+            data_beacon_id = "6";
+            collect_beacon = 1;
+            Serial.println("bedroom connected");
+//            beacon_name = "bedroom";
+          }
+          else if(test.equals("kitchen")==1){
+            data_beacon_id = "7";
+            collect_beacon = 1;
+            Serial.println("kitchen connected");
+//            beacon_name = "kitchen";
+          }
+          else if(test.equals("sister")==1){
+            data_beacon_id = "8";
+            collect_beacon = 1;
+            Serial.println("sister connected");
+//            beacon_name = "sister";
+          }
+        }
+        data_3.concat("!");
       }
       else {
-        collect_beacon = 0;
-//        Serial.println("Beacon not sending");
-      }
-        
-      if(collect_beacon == 1){
         data_3.concat(data_beacon_no);
         data_3.concat("!");
         data_3.concat(data_beacon_id);
-        collect_beacon = 0;
-      }else{
-        data_3.concat("!");
+        if (!reka_beacon.isConnected()){
+          collect_beacon = 0;
+        }
       }
       data_3.concat("#");
 
